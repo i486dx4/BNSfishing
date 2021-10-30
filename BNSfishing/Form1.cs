@@ -10,16 +10,40 @@ using System.Threading;
 using System.Windows.Forms;
 
 namespace BNSfishing {
+    enum FishingMode {
+        Emulate,
+        Moderate,
+        Faster,
+        Fastest
+    }
     public partial class Form1 : Form {
+        const string INITIAL_COUNTER = "1500";
+        const int WM_SYSKEYDOWN = 0x0104;
+        const int WM_SYSKEYUP = 0x0105;
+        const int VK_KEY_5 = 0x35;
+        const int VK_KEY_F = 0x46;
+
         private bool looping = false;
         private Bitmap screenPixel = new Bitmap(1, 1, PixelFormat.Format32bppArgb);
         private Point samplePoint = new Point(0, 0);
         private Random rnd = new Random();
         private IntPtr windowPointer;
+        private bool traceMouseCursor = true;
+        private FishingMode fishingModeLevel = FishingMode.Moderate;
 
         public Form1() {
             InitializeComponent();
+            radioButtonEmulate.Tag = FishingMode.Emulate;
+            radioButtonModerate.Tag = FishingMode.Moderate;
+            radioButtonFaster.Tag = FishingMode.Faster;
+            radioButtonFastest.Tag = FishingMode.Fastest;
+
+            radioButtonModerate.Checked = true;
+
+            counterTextBox.Text = INITIAL_COUNTER;
             statusLabel.Text = "done.";
+            timer1.Interval = 100;
+            timer1.Start();
         }
 
         private IntPtr findProcess() {
@@ -38,6 +62,8 @@ namespace BNSfishing {
         private void startButton_Click(object sender, EventArgs e) {
             startButton.Enabled = false;
             stopButton.Enabled = true;
+            traceMouseCursor = false;
+            // timer1.Stop();
 
             // fishingBackgroundWorker.RunWorkerAsync(2000);
             Start();
@@ -55,7 +81,7 @@ namespace BNSfishing {
             }
             */
             if (this.windowPointer != IntPtr.Zero) {
-                statusTextBox.Text = "Found";
+                statusTextBox.Text = "BNS Found" + Environment.NewLine;
 
                 int x = Int32.Parse(xTextBox.Text);
                 int y = Int32.Parse(yTextBox.Text);
@@ -64,8 +90,7 @@ namespace BNSfishing {
 
                 statusLabel.Text = "color: " + c.ToArgb();
 
-                // SetForegroundWindow(this.windowPointer);
-                Thread.Sleep(500);
+                Thread.Sleep(200);
 
                 samplePoint = new Point(x,y);
 
@@ -73,25 +98,11 @@ namespace BNSfishing {
                 var color = GetPixel(samplePoint);
                 // currentColor = color.ToArgb();
                 fishingBackgroundWorker.RunWorkerAsync(2000);
-                /*
-                while (looping)
-                {
-                    SendKeys.SendWait("{5}");
-                    Thread.Sleep(20000);
-                    SendKeys.SendWait("{f}");
-                    Thread.Sleep(1000);
-                }
-                */
-                /*
-                SendKeys.SendWait("{TAB}");
-                SendKeys.SendWait("{TAB}");
-                SendKeys.SendWait("{ENTER}");
-                SendKeys.Flush();
-                */
             } else {
-                statusTextBox.Text = "NOT Found";
+                statusTextBox.Text = "NOT Found" + Environment.NewLine;
                 startButton.Enabled = true;
                 stopButton.Enabled = false;
+                counterTextBox.Text = INITIAL_COUNTER;
             }
         }
 
@@ -104,23 +115,31 @@ namespace BNSfishing {
         [DllImport("user32.dll")]
         static extern bool PostMessage(IntPtr hWnd, UInt32 Msg, int wParam, int lParam);
 
-        //[DllImport("user32.dll")]
-        //public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-        //[DllImport("user32.dll")]
-        //public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
-
         delegate bool EnumThreadDelegate(IntPtr hWnd, IntPtr lParam);
 
         [DllImport("user32.dll")]
         static extern bool EnumThreadWindows(int dwThreadId, EnumThreadDelegate lpfn,
             IntPtr lParam);
 
-        //[DllImport("user32.dll")]
-        //static extern bool GetCursorPos(ref Point lpPoint);
+        [DllImport("user32.dll")]
+        static extern bool GetCursorPos(ref Point lpPoint);
 
         [DllImport("gdi32.dll", CharSet = CharSet.Auto, SetLastError = true, ExactSpelling = true)]
         public static extern int BitBlt(IntPtr hDC, int x, int y, int nWidth, int nHeight, IntPtr hSrcDC, int xSrc, int ySrc, int dwRop);
 
+        private void timer1_Tick(object sender, EventArgs e) {
+            labelCurrentTime.Text = DateTime.Now.ToString("HH:mm:ss");
+
+            if (traceMouseCursor) {
+                var pt = new Point();
+
+                GetCursorPos(ref pt);
+                xTextBox.Text = pt.X.ToString();
+                yTextBox.Text = pt.Y.ToString();
+            } else {
+                timer1.Interval = 1000;
+            }
+        }
 
         static IEnumerable<IntPtr> EnumerateProcessWindowHandles(int processId) {
             var handles = new List<IntPtr>();
@@ -132,27 +151,6 @@ namespace BNSfishing {
             return handles;
         }
 
-
-        /*
-        public static Bitmap PrintWindow(IntPtr hwnd)
-        {
-            RECT rc;
-            GetWindowRect(hwnd, out rc);
-
-
-            Bitmap bmp = new Bitmap(rc.Width, rc.Height, PixelFormat.Format32bppArgb);
-            Graphics gfxBmp = Graphics.FromImage(bmp);
-            IntPtr hdcBitmap = gfxBmp.GetHdc();
-
-            PrintWindow(hwnd, hdcBitmap, 0);
-
-            gfxBmp.ReleaseHdc(hdcBitmap);
-            gfxBmp.Dispose();
-
-            return bmp;
-        }
-        */
-
         private void stopButton_Click(object sender, EventArgs e) {
             looping = false;
             stopButton.Enabled = false;
@@ -162,52 +160,161 @@ namespace BNSfishing {
         }
 
         private void comboBox1_SelectedIndexChanged(object sender, EventArgs e) {
-            statusLabel.Text = "Index: " + predefinedComboBox.SelectedIndex + ", value: " + predefinedComboBox.Text;
+            traceMouseCursor = false;
 
-            var list = predefinedComboBox.Text.Split(",").ToList();
+            if (predefinedComboBox.SelectedIndex == 0) {
+                traceMouseCursor = true;
+                timer1.Interval = 100;
+            } else {
+                statusLabel.Text = "Index: " + predefinedComboBox.SelectedIndex + ", value: " + predefinedComboBox.Text;
 
-            xTextBox.Text = list[0].Trim();
-            yTextBox.Text = list[1].Trim();
+                var list = predefinedComboBox.Text.Split(",").ToList();
 
+                xTextBox.Text = list[0].Trim();
+                yTextBox.Text = list[1].Trim();
+            }
         }
 
+        private void PressKey(int key) {
+            PostMessage(this.windowPointer, WM_SYSKEYDOWN, key, 0);
+            Thread.Sleep(50);
+            PostMessage(this.windowPointer, WM_SYSKEYUP, key, 0);
+        }
         private void fishingBackgroundWorker_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e) {
-            const int WM_SYSKEYDOWN = 0x0104;
-            // const int WM_KEYDOWN = 0x0100;
-            // const int WM_SYSKEYUP = 0x;
-            const int VK_KEY_5 = 0x35;
-            const int VK_KEY_F = 0x46;
+            //const int WM_SYSKEYDOWN = 0x0104;
+            //const int WM_SYSKEYUP = 0x0105;
+            //const int VK_KEY_5 = 0x35;
+            //const int VK_KEY_F = 0x46;
+            const int RECENT_TIME_SIZE = 20;
 
-            int color1, color2;
-            int counter = 0;
+            Color color1, color2;
+            int counter = Int32.Parse(counterTextBox.Text);
 
             var windowMode = windowCheckBox.Checked;
+            DateTime[] recentTime = new DateTime[RECENT_TIME_SIZE];
+            int recentTimeIndex = 0;
+
 
             Thread.Sleep(1500);
 
-            while (looping && counter < 1500) {
-                // SendKeys.SendWait("{5}");
-                PostMessage(this.windowPointer, WM_SYSKEYDOWN, VK_KEY_5, 0);
+            do {
+                DateTime startedTime = DateTime.Now;
+                int total = 0;
 
-                Thread.Sleep(2000);
+                textBoxStartedTime.Text = startedTime.ToString("HH:mm:ss");
 
-                color1 = windowMode ?
-                    GetColorAt(this.windowPointer, samplePoint.X, samplePoint.Y).ToArgb() :
-                    GetPixel(samplePoint).ToArgb();
+                while (looping && counter > 0) {
+                    textBoxCounter.Text = total.ToString();
+                    PressKey(VK_KEY_5);
+                    Thread.Sleep(2000);
+                    color1 = windowMode ?
+                        GetColorAt(this.windowPointer, samplePoint.X, samplePoint.Y) :
+                        GetPixel(samplePoint);
 
-                do {
-                    Thread.Sleep(500);
-                    color2 = windowMode ?
-                        GetColorAt(this.windowPointer, samplePoint.X, samplePoint.Y).ToArgb() :
-                        GetPixel(samplePoint).ToArgb();
-                } while (color1 == color2);
-                Thread.Sleep(100);
-                //SendKeys.SendWait("{f}");
-                counter++;
-                PostMessage(this.windowPointer, WM_SYSKEYDOWN, VK_KEY_F, 0);
-                statusLabel.Text = "Counter: " + counter + ",  from: " + color1 + " to " + color2;
-                Thread.Sleep(rnd.Next(50, 300) + rnd.Next(50, 4500));
-            }
+                    pictureBox1.BackColor = color1;
+
+                    do {
+                        Thread.Sleep(100);
+                        color2 = windowMode ?
+                            GetColorAt(this.windowPointer, samplePoint.X, samplePoint.Y) :
+                            GetPixel(samplePoint);
+                    } while (color1.ToArgb() == color2.ToArgb());
+
+                    pictureBox2.BackColor = color2;
+                    Thread.Sleep(rnd.Next(250, 500));
+
+                    PressKey(VK_KEY_F);
+
+                    counter = Int32.Parse(counterTextBox.Text);
+
+                    if (counter > 0) {
+                        counter--;
+                    }
+
+                    counterTextBox.Text = counter.ToString();
+                    total++;
+
+                    var now = DateTime.Now;
+                    var elapsedTime = now - startedTime;
+                    var diffInSeconds = elapsedTime.TotalSeconds;
+                    var avg = diffInSeconds / (double)total;
+                    var est = now.AddSeconds(avg * counter);
+                    var recentAvg = avg;
+                    var recentEst = est;
+
+                    recentTimeIndex = (recentTimeIndex + 1) % RECENT_TIME_SIZE;
+                    if (total > RECENT_TIME_SIZE) {
+                        recentAvg = (now - recentTime[recentTimeIndex]).TotalSeconds / (double) RECENT_TIME_SIZE;
+                        recentEst = now.AddSeconds(recentAvg * counter);
+                    }
+                    recentTime[recentTimeIndex] = now;
+
+                    var leftTime = TimeSpan.FromSeconds(recentAvg * counter);
+
+                    textBoxEstimateTotal.Text = est.ToString("HH:mm:ss");
+                    textBoxEstimateRecent.Text = recentEst.ToString("HH:mm:ss");
+                    textBoxAvgTotal.Text = avg.ToString("0.00");
+                    textBoxAvgRecent.Text = recentAvg.ToString("0.00");
+                    textBoxLeftTime.Text = string.Format("{1:D2}:{2:D2}:{3:D2}",
+                        leftTime.Days, leftTime.Hours, leftTime.Minutes, leftTime.Seconds);
+                    //textBoxElapsed.Text = (now - startedTime).
+
+                    if (elapsedTime.Days == 0) {
+                        textBoxElapsed.Text = string.Format("{1:D2}:{2:D2}:{3:D2}",
+                        elapsedTime.Days, elapsedTime.Hours, elapsedTime.Minutes, elapsedTime.Seconds);
+                    } else {
+                        textBoxElapsed.Text = string.Format("{0} day(s), {1:D2}:{2:D2}:{3:D2}",
+                        elapsedTime.Days, elapsedTime.Hours, elapsedTime.Minutes, elapsedTime.Seconds);
+                    }
+                    string.Format("Upload completed, 100, {0:D2}:{1:D2}:{2:D2}:{3:D2}:{4:D3}",
+                        elapsedTime.Days, elapsedTime.Hours, elapsedTime.Minutes, elapsedTime.Seconds, elapsedTime.Milliseconds);
+
+                    //statusLabel.Text = "Total: " + total + ", Avg: " + avg.ToString("0.00") +
+                    //    "/" + recentAvg.ToString("0.00") +
+                    //    ", Est: " + est.ToString("HH:mm:ss") + "/" + recentEst.ToString("HH:mm:ss");
+
+                    int sleepTime = 0;
+
+                    switch (fishingModeLevel) {
+                        case FishingMode.Emulate:
+                            sleepTime  = rnd.Next(5000, 7000);
+                            break;
+                        case FishingMode.Moderate:
+                            sleepTime = rnd.Next(70, 700) + rnd.Next(300, 4800);
+                            break;
+                        case FishingMode.Faster:
+                            sleepTime = rnd.Next(70, 500) + rnd.Next(300, 1000);
+                            break;
+                        case FishingMode.Fastest:
+                            sleepTime = rnd.Next(200, 500);
+                            break;
+                    }
+
+                    statusLabel.Text = "Mode: " + fishingModeLevel.ToString() + ", Wait: " + sleepTime + " ms.";
+                    Thread.Sleep(sleepTime);
+                }
+
+                if (looping && counter <= 0) {
+                    statusLabel.Text = "Task done.";
+
+                    statusTextBox.Text += "Counter reach 0 at " + DateTime.Now.ToString("HH:mm:ss") + Environment.NewLine;
+
+                    while (looping) {
+                        Thread.Sleep(1000);
+
+                        var now = DateTime.Now;
+
+                        if (now.Hour <= 12 && now.Hour >= 6 && now.Minute > 5) {
+                            counter = 1500;
+                            counterTextBox.Text = "1500";
+                            statusTextBox.Text += "Reset Counter at " + DateTime.Now.ToString("hh:mm:ss") + Environment.NewLine;
+                            break;
+                        } else {
+                            statusLabel.Text = "Current time: " + now.ToString("hh:mm:ss");
+                        }
+                    }
+                }
+            } while (looping);
             startButton.Enabled = true;
             stopButton.Enabled = false;
         }
@@ -217,20 +324,13 @@ namespace BNSfishing {
             stopButton.Enabled = false;
         }
 
-        //private void MouseMoveTimer_Tick(object sender, EventArgs e) {
-        //    /*
-        //    Point cursor = new Point();
-        //    GetCursorPos(ref cursor);
+        private void radioButtons_CheckedChanged(object sender, EventArgs e) {
+            RadioButton radioButton = sender as RadioButton;
 
-        //    var c = GetColorAt(cursor);
-        //    this.BackColor = c;
-
-        //    if (c.R == c.G && c.G < 64 && c.B > 128)
-        //    {
-        //        MessageBox.Show("Blue");
-        //    }
-        //    */
-        //}
+            if (radioButton.Tag is Enum) {
+                fishingModeLevel = (FishingMode) radioButton.Tag;
+            }
+        }
 
         private Color GetPixel(Point position) {
             using (var bitmap = new Bitmap(1, 1)) {
@@ -259,105 +359,7 @@ namespace BNSfishing {
 
             return screenPixel.GetPixel(0, 0);
         }
+
+        
     }
-/*
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT {
-        private int _Left;
-        private int _Top;
-        private int _Right;
-        private int _Bottom;
-
-        public RECT(RECT Rectangle) : this(Rectangle.Left, Rectangle.Top, Rectangle.Right, Rectangle.Bottom) {
-        }
-        public RECT(int Left, int Top, int Right, int Bottom) {
-            _Left = Left;
-            _Top = Top;
-            _Right = Right;
-            _Bottom = Bottom;
-        }
-
-        public int X {
-            get { return _Left; }
-            set { _Left = value; }
-        }
-        public int Y {
-            get { return _Top; }
-            set { _Top = value; }
-        }
-        public int Left {
-            get { return _Left; }
-            set { _Left = value; }
-        }
-        public int Top {
-            get { return _Top; }
-            set { _Top = value; }
-        }
-        public int Right {
-            get { return _Right; }
-            set { _Right = value; }
-        }
-        public int Bottom {
-            get { return _Bottom; }
-            set { _Bottom = value; }
-        }
-        public int Height {
-            get { return _Bottom - _Top; }
-            set { _Bottom = value + _Top; }
-        }
-        public int Width {
-            get { return _Right - _Left; }
-            set { _Right = value + _Left; }
-        }
-        public Point Location {
-            get { return new Point(Left, Top); }
-            set {
-                _Left = value.X;
-                _Top = value.Y;
-            }
-        }
-        public Size Size {
-            get { return new Size(Width, Height); }
-            set {
-                _Right = value.Width + _Left;
-                _Bottom = value.Height + _Top;
-            }
-        }
-
-        public static implicit operator Rectangle(RECT Rectangle) {
-            return new Rectangle(Rectangle.Left, Rectangle.Top, Rectangle.Width, Rectangle.Height);
-        }
-        public static implicit operator RECT(Rectangle Rectangle) {
-            return new RECT(Rectangle.Left, Rectangle.Top, Rectangle.Right, Rectangle.Bottom);
-        }
-        public static bool operator ==(RECT Rectangle1, RECT Rectangle2) {
-            return Rectangle1.Equals(Rectangle2);
-        }
-        public static bool operator !=(RECT Rectangle1, RECT Rectangle2) {
-            return !Rectangle1.Equals(Rectangle2);
-        }
-
-        public override string ToString() {
-            return "{Left: " + _Left + "; " + "Top: " + _Top + "; Right: " + _Right + "; Bottom: " + _Bottom + "}";
-        }
-
-        public override int GetHashCode() {
-            return ToString().GetHashCode();
-        }
-
-        public bool Equals(RECT Rectangle) {
-            return Rectangle.Left == _Left && Rectangle.Top == _Top && Rectangle.Right == _Right && Rectangle.Bottom == _Bottom;
-        }
-
-        public override bool Equals(object Object) {
-            if (Object is RECT) {
-                return Equals((RECT)Object);
-            } else if (Object is Rectangle) {
-                return Equals(new RECT((Rectangle)Object));
-            }
-
-            return false;
-        }
-    }*/
 }
